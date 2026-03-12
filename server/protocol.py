@@ -1,5 +1,5 @@
 """
-Binary UDP protocol for ESP32-S3 HID Relay.
+Binary UDP protocol for ESP32-S3 KVM.
 
 Packet format: 16 bytes, little-endian.
 """

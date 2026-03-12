@@ -20,7 +20,7 @@ QueueHandle_t hid_event_queue;
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "ESP32-S3 HID Relay starting...");
+    ESP_LOGI(TAG, "ESP32-S3 KVM starting...");
 
     // 1. Initialize NVS (required by WiFi)
     esp_err_t ret = nvs_flash_init();

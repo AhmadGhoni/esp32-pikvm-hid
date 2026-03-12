@@ -1,5 +1,5 @@
 """
-ESP32-S3 HID Relay - Server (Windows)
+ESP32-S3 KVM - Server (Windows)
 
 Captures keyboard events (LL Hook) and mouse events (Raw Input + LL Hook)
 and sends them as UDP packets to ESP32-S3.
@@ -31,6 +31,7 @@ from protocol import (
     pack_consumer,
 )
 from hid_keymap import VK_MODIFIER_MAP, VK_TO_HID, VK_TO_CONSUMER
+from clipboard_typer import read_clipboard_text, text_to_keystrokes
 
 # ═══════════════════════════════════════════════════════════════════
 #  WinAPI Constants
@@ -262,6 +263,12 @@ class InputState:
         self.consumer_usage: int = 0  # Currently pressed consumer usage (0 = none)
         self.consumer_dirty: bool = False
 
+        # Clipboard paste
+        self.pasting: bool = False
+        self.paste_chars: list[tuple[int, int]] = []  # (hid_keycode, modifiers)
+        self.paste_index: int = 0
+        self.paste_phase: int = 0  # 0=press, 1=release
+
     def next_seq(self) -> int:
         self.sequence = (self.sequence + 1) & 0xFFFFFFFF
         return self.sequence
@@ -391,6 +398,11 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
                         state.kbd_dirty = True
                         state.consumer_usage = 0
                         state.consumer_dirty = True
+                        # Cancel any active paste
+                        if state.pasting:
+                            state.pasting = False
+                            state.paste_chars = []
+                            state.paste_index = 0
                 status = "ON" if active else "OFF"
                 print(f"[KVM] {status}")
             # Pass Scroll Lock to host (don't block DOWN or UP)
@@ -398,6 +410,41 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
 
         with state.lock:
             if state.kvm_active:
+                # ── Paste: Shift+Insert → paste clipboard ─────
+                VK_INSERT = 0x2D
+                if vk == VK_INSERT and is_down and (state.modifiers & 0x22):
+                    # Release all keys before pasting
+                    state.modifiers = 0
+                    state.pressed_keys.clear()
+                    state.kbd_dirty = True
+                    # Read clipboard (quick operation)
+                    text = read_clipboard_text()
+                    if text:
+                        chars = text_to_keystrokes(text)
+                        if chars:
+                            state.paste_chars = chars
+                            state.paste_index = 0
+                            state.paste_phase = 0
+                            state.pasting = True
+                            print(f"[PASTE] {len(chars)} keystroke(s) queued")
+                        else:
+                            print("[PASTE] No typeable characters in clipboard")
+                    else:
+                        print("[PASTE] Clipboard empty or no text")
+                    return 1
+
+                # ── During paste: block keys, Esc cancels ─────
+                if state.pasting:
+                    if vk == 0x1B and is_down:  # Escape
+                        done = state.paste_index
+                        total = len(state.paste_chars)
+                        state.pasting = False
+                        state.paste_chars = []
+                        state.paste_index = 0
+                        state.kbd_dirty = True  # Release any paste key
+                        print(f"[PASTE] Cancelled ({done}/{total})")
+                    return 1  # Block all keys during paste
+
                 # Numpad Enter: VK_RETURN + extended → HID 0x58 (Keypad Enter)
                 if vk == 0x0D and is_extended:
                     hid_code = 0x58
@@ -529,6 +576,31 @@ def sender_thread(host: str, port: int, rate: int,
                     seq = state.next_seq()
                     pkt = pack_keyboard(seq, modifiers, keycodes)
                     sock.sendto(pkt, target)
+                elif state.pasting:
+                    # Paste mode: type one phase per sender cycle
+                    idx = state.paste_index
+                    if idx < len(state.paste_chars):
+                        hid_code, mods = state.paste_chars[idx]
+                        if state.paste_phase == 0:
+                            # Key press
+                            seq = state.next_seq()
+                            kc = bytes([hid_code, 0, 0, 0, 0, 0])
+                            pkt = pack_keyboard(seq, mods, kc)
+                            sock.sendto(pkt, target)
+                            state.paste_phase = 1
+                        else:
+                            # Key release
+                            seq = state.next_seq()
+                            pkt = pack_keyboard(seq, 0, bytes(6))
+                            sock.sendto(pkt, target)
+                            state.paste_phase = 0
+                            state.paste_index += 1
+                    else:
+                        count = len(state.paste_chars)
+                        state.pasting = False
+                        state.paste_chars = []
+                        state.paste_index = 0
+                        print(f"[PASTE] Done ({count} chars)")
 
                 if con_dirty:
                     seq = state.next_seq()
@@ -615,7 +687,7 @@ def register_raw_input(hwnd: wintypes.HWND):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="ESP32-S3 HID Relay Server (KVM via Scroll Lock)"
+        description="ESP32-S3 KVM Server (KVM via Scroll Lock)"
     )
     parser.add_argument("--host", required=True, help="ESP32 IP address")
     parser.add_argument("--port", type=int, default=UDP_PORT,

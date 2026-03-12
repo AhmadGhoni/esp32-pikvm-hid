@@ -10,6 +10,7 @@ The Target PC sees a regular USB keyboard and mouse, no drivers or software requ
 - 5-button mouse with 16-bit relative movement, vertical and horizontal scroll
 - Raw mouse data (Raw Input) – no Windows acceleration, 1:1 sensor mapping
 - KVM mode toggle via **Scroll Lock** – input goes either to Host or Target
+- **Clipboard paste** – Shift+Insert types clipboard text as keystrokes on Target (supports ASCII + Polish diacritics, Escape to cancel)
 - Fixed polling rate of 125 Hz (configurable 60–1000 Hz) with mouse movement accumulation
 - Binary UDP protocol – 16-byte packets, low latency
 - WiFi Modem Sleep disabled – eliminates ~200 ms lag on first packet
@@ -96,6 +97,16 @@ python server.py --host <ESP32_IP>
    - **KVM OFF** (default) – keyboard and mouse work normally on Host PC
    - **KVM ON** – input is blocked on Host PC and forwarded to Target PC
 
+### Clipboard Paste
+
+While KVM is active, press **Shift+Insert** to type the Host clipboard contents on the Target PC as individual keystrokes. This is useful for pasting passwords, commands, URLs, or any text into a machine that has no network/shared clipboard.
+
+- Supported characters: ASCII (letters, digits, punctuation, whitespace) and Polish diacritics (ą, ć, ę, ł, ń, ó, ś, ź, ż via AltGr)
+- Polish characters require the **Polish Programmer** keyboard layout on both Host and Target
+- Unsupported characters (e.g. emoji, CJK) are silently skipped
+- Press **Escape** to cancel paste in progress
+- Typing speed: ~62 chars/s at 125 Hz (1 press + 1 release per character).
+
 ### Server Options
 
 | Parameter | Default | Description |
@@ -158,6 +169,7 @@ esp32-kvm-ip/
 │   └── hid_task.c/h           # xQueue → USB HID reports
 └── server/
     ├── server.py              # Server: WinAPI hooks, Raw Input, UDP sender
+    ├── clipboard_typer.py     # Clipboard paste: text → HID keystroke sequences
     ├── hid_keymap.py          # VK_* → HID Usage ID mapping (150+ keys)
     └── protocol.py            # UDP packet packing
 ```
