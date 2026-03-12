@@ -10,6 +10,7 @@
 typedef enum : uint8_t {
     EVENT_TYPE_MOUSE    = 0x01,
     EVENT_TYPE_KEYBOARD = 0x02,
+    EVENT_TYPE_CONSUMER = 0x03,
 } event_type_t;
 
 // ── Incoming UDP packet from server ──────────────────────────────
@@ -34,6 +35,11 @@ typedef struct __attribute__((packed)) {
             uint8_t reserved;
             uint8_t keycodes[6];// 6-key rollover
         } keyboard;             // 8 bytes
+
+        struct __attribute__((packed)) {
+            uint16_t usage_id;  // Consumer Usage ID (0 = release)
+            uint8_t  _pad[6];
+        } consumer;             // 8 bytes
     };
 } udp_packet_t;
 
@@ -55,6 +61,9 @@ typedef struct {
             uint8_t modifiers;
             uint8_t keycodes[6];
         } keyboard;
+        struct {
+            uint16_t usage_id;
+        } consumer;
     };
 } hid_event_t;
 

@@ -50,6 +50,14 @@ void hid_task(void *pvParameters)
                     break;
                 }
 
+                case EVENT_TYPE_CONSUMER: {
+                    consumer_report_t report = {
+                        .usage_id = event.consumer.usage_id,
+                    };
+                    tud_hid_report(REPORT_ID_CONSUMER, &report, sizeof(report));
+                    break;
+                }
+
                 default:
                     break;
             }

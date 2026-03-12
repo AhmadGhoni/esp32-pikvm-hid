@@ -12,6 +12,7 @@ PACKET_SIZE    = 16
 
 EVENT_MOUSE    = 0x01
 EVENT_KEYBOARD = 0x02
+EVENT_CONSUMER = 0x03
 
 # Struct.pack formats (little-endian '<'):
 #
@@ -19,9 +20,11 @@ EVENT_KEYBOARD = 0x02
 #
 # Mouse payload:       B=buttons(1) h=dx(2) h=dy(2) b=wheel(1) b=pan(1) x=pad(1) = 8 bytes
 # Keyboard payload:    B=modifiers(1) B=reserved(1) 6s=keycodes(6)                = 8 bytes
+# Consumer payload:    H=usage_id(2) 6x=pad(6)                                    = 8 bytes
 
 FMT_MOUSE    = '<HIBxBhhbbx'   # 16 bytes
 FMT_KEYBOARD = '<HIBxBB6s'     # 16 bytes
+FMT_CONSUMER = '<HIBxH6x'     # 16 bytes
 
 
 def pack_mouse(seq: int, buttons: int, dx: int, dy: int,
@@ -41,6 +44,14 @@ def pack_keyboard(seq: int, modifiers: int,
                        modifiers, 0x00, kc)
 
 
+def pack_consumer(seq: int, usage_id: int) -> bytes:
+    """Packs a consumer control event into a UDP packet."""
+    return struct.pack(FMT_CONSUMER,
+                       PACKET_MAGIC, seq, EVENT_CONSUMER,
+                       usage_id)
+
+
 # Size verification
 assert struct.calcsize(FMT_MOUSE)    == PACKET_SIZE
 assert struct.calcsize(FMT_KEYBOARD) == PACKET_SIZE
+assert struct.calcsize(FMT_CONSUMER) == PACKET_SIZE

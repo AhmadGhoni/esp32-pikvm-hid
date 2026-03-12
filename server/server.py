@@ -28,8 +28,9 @@ from protocol import (
     UDP_PORT,
     pack_keyboard,
     pack_mouse,
+    pack_consumer,
 )
-from hid_keymap import VK_MODIFIER_MAP, VK_TO_HID
+from hid_keymap import VK_MODIFIER_MAP, VK_TO_HID, VK_TO_CONSUMER
 
 # ═══════════════════════════════════════════════════════════════════
 #  WinAPI Constants
@@ -257,6 +258,10 @@ class InputState:
         self.pressed_keys: set[int] = set()
         self.kbd_dirty: bool = False  # Keyboard state change flag
 
+        # Consumer (multimedia / browser)
+        self.consumer_usage: int = 0  # Currently pressed consumer usage (0 = none)
+        self.consumer_dirty: bool = False
+
     def next_seq(self) -> int:
         self.sequence = (self.sequence + 1) & 0xFFFFFFFF
         return self.sequence
@@ -384,6 +389,8 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
                         state.mouse_wheel = 0
                         state.mouse_pan = 0
                         state.kbd_dirty = True
+                        state.consumer_usage = 0
+                        state.consumer_dirty = True
                 status = "ON" if active else "OFF"
                 print(f"[KVM] {status}")
             # Pass Scroll Lock to host (don't block DOWN or UP)
@@ -406,6 +413,15 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
                     else:
                         state.modifiers &= ~(1 << bit)
                     state.kbd_dirty = True
+                elif vk in VK_TO_CONSUMER:
+                    usage = VK_TO_CONSUMER[vk]
+                    if is_down:
+                        state.consumer_usage = usage
+                    else:
+                        # Release only if this was the active consumer key
+                        if state.consumer_usage == usage:
+                            state.consumer_usage = 0
+                    state.consumer_dirty = True
                 else:
                     hid_code = VK_TO_HID.get(vk)
                     if hid_code is not None:
@@ -468,6 +484,12 @@ def sender_thread(host: str, port: int, rate: int,
                     )
                 state.kbd_dirty = False
 
+            # ── Consumer (multimedia / browser) ──────────────
+            con_dirty = state.consumer_dirty
+            if con_dirty:
+                consumer_usage = state.consumer_usage
+                state.consumer_dirty = False
+
             if active:
                 # ── Mouse ────────────────────────────────────────
                 dx = state.mouse_dx
@@ -507,12 +529,21 @@ def sender_thread(host: str, port: int, rate: int,
                     seq = state.next_seq()
                     pkt = pack_keyboard(seq, modifiers, keycodes)
                     sock.sendto(pkt, target)
-            elif kbd_dirty:
-                # KVM just disabled - send "release all keys"
-                # report before we stop transmitting
-                seq = state.next_seq()
-                pkt = pack_keyboard(seq, modifiers, keycodes)
-                sock.sendto(pkt, target)
+
+                if con_dirty:
+                    seq = state.next_seq()
+                    pkt = pack_consumer(seq, consumer_usage)
+                    sock.sendto(pkt, target)
+            elif kbd_dirty or con_dirty:
+                # KVM just disabled - send "release all" reports
+                if kbd_dirty:
+                    seq = state.next_seq()
+                    pkt = pack_keyboard(seq, modifiers, keycodes)
+                    sock.sendto(pkt, target)
+                if con_dirty:
+                    seq = state.next_seq()
+                    pkt = pack_consumer(seq, consumer_usage)
+                    sock.sendto(pkt, target)
 
         # Precise timing (busy-wait for the last µs)
         elapsed = time.perf_counter() - t0

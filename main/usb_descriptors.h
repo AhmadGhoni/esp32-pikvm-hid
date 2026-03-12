@@ -5,6 +5,7 @@
 
 #define REPORT_ID_MOUSE    1
 #define REPORT_ID_KEYBOARD 2
+#define REPORT_ID_CONSUMER 3
 
 // USB HID report structures sent to the host
 // (without Report ID - TinyUSB adds it automatically)
@@ -27,6 +28,12 @@ typedef struct __attribute__((packed)) {
 } keyboard_report_t;    // 8 bytes
 
 _Static_assert(sizeof(keyboard_report_t) == 8, "Keyboard report must be 8 bytes");
+
+typedef struct __attribute__((packed)) {
+    uint16_t usage_id;  // Consumer Usage ID (0x0C page), 0 = release
+} consumer_report_t;    // 2 bytes
+
+_Static_assert(sizeof(consumer_report_t) == 2, "Consumer report must be 2 bytes");
 
 // USB descriptors (defined in usb_descriptors.c)
 #include "tusb.h"

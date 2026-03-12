@@ -3,7 +3,7 @@
 #include "usb_descriptors.h"
 
 // ═══════════════════════════════════════════════════════════════════
-//  HID REPORT DESCRIPTOR - Composite: Mouse (ID=1) + Keyboard (ID=2)
+//  HID REPORT DESCRIPTOR - Composite: Mouse (ID=1) + Keyboard (ID=2) + Consumer (ID=3)
 // ═══════════════════════════════════════════════════════════════════
 
 static const uint8_t s_hid_report_descriptor[] = {
@@ -115,6 +115,13 @@ static const uint8_t s_hid_report_descriptor[] = {
       HID_INPUT       ( HID_DATA | HID_ARRAY        ),
 
     HID_COLLECTION_END,
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║              CONSUMER CONTROL  (Report ID 3)                 ║
+    // ║  1× 16-bit Usage ID (media, browser, etc.)                   ║
+    // ╚══════════════════════════════════════════════════════════════╝
+
+    TUD_HID_REPORT_DESC_CONSUMER( HID_REPORT_ID(REPORT_ID_CONSUMER) ),
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -164,7 +171,7 @@ const uint8_t s_configuration_descriptor[] = {
 const char *s_string_descriptors[] = {
     [0] = "\x09\x04",          // Supported language: English (US)
     [1] = "ESP32-S3 HID",      // Manufacturer
-    [2] = "Wireless KBD+Mouse",// Product
+    [2] = "Wireless KBD+Mouse+Media",// Product
     [3] = "000000000001",      // Serial
 };
 

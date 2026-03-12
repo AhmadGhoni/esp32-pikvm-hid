@@ -1,10 +1,11 @@
 """
-Mapping of Windows Virtual Key codes (VK_*) to HID Usage ID (Keyboard/Keypad Page 0x07).
+Mapping of Windows Virtual Key codes (VK_*) to HID Usage IDs.
 
-Source:  USB HID Usage Tables 1.4, Table 12 - Keyboard/Keypad Page
+Keyboard/Keypad Page (0x07) — regular keys
+Consumer Page (0x0C) — multimedia, browser, and system keys
+
+Source:  USB HID Usage Tables 1.4
          https://usb.org/document-library/hid-usage-tables-14
-
-Total: 8 modifiers + 3 generic modifiers + 140+ keys = over 150 mappings.
 """
 
 # ═══════════════════════════════════════════════════════════════════
@@ -183,35 +184,53 @@ VK_TO_HID: dict[int, int] = {
     0x18: 0x8B,  # VK_FINAL             → International5 (fallback)
     0x1F: 0x8C,  # VK_MODECHANGE        → International6 (Keypad Comma JP)
 
-    # ── Multimedia / browser (Consumer page - sent as keyboard) ─
-    # Note: these keys generate VK in LL hook, but on USB HID they map
-    # to Consumer Usage Page (0x0C). Our implementation sends them as
-    # Keyboard Page codes - Target PC will ignore unknown Usage IDs,
-    # but this allows future extension of the descriptor with Consumer page.
-    0xAD: 0x7F,  # VK_VOLUME_MUTE       → Mute (HID 0x7F)
-    0xAE: 0x81,  # VK_VOLUME_DOWN       → Volume Down (HID 0x81)
-    0xAF: 0x80,  # VK_VOLUME_UP         → Volume Up (HID 0x80)
-    0xB0: 0x4B,  # VK_MEDIA_NEXT_TRACK  → (reserved, placeholder)
-    0xB1: 0x4E,  # VK_MEDIA_PREV_TRACK  → (reserved, placeholder)
-    0xB2: 0x78,  # VK_MEDIA_STOP        → Stop (HID 0x78)
-    0xB3: 0x48,  # VK_MEDIA_PLAY_PAUSE  → Pause (HID 0x48, overloaded)
-
     # ── Legacy / rare keys ───────────────────────────────────────────
     0xF6: 0x9A,  # VK_ATTN              → SysReq/Attention
     0xF7: 0xA4,  # VK_CRSEL             → CrSel/Props
     0xF8: 0xA5,  # VK_EXSEL             → ExSel
     0xF9: 0xA6,  # VK_EREOF             → Erase-EOF
-    0xFA: 0x00,  # VK_PLAY              → (no direct HID mapping)
-    0xFB: 0x00,  # VK_ZOOM              → (no direct HID mapping)
-    0xFD: 0x00,  # VK_PA1               → (no direct HID mapping)
     0xFE: 0x9C,  # VK_OEM_CLEAR         → Clear
+}
+
+# ═══════════════════════════════════════════════════════════════════
+#  Consumer keys - VK code → HID Consumer Usage ID (Page 0x0C)
+#  Sent as a separate Consumer Control HID report.
+# ═══════════════════════════════════════════════════════════════════
+
+VK_TO_CONSUMER: dict[int, int] = {
+
+    # ── Volume ───────────────────────────────────────────────────────
+    0xAD: 0x00E2,  # VK_VOLUME_MUTE       → Mute
+    0xAE: 0x00EA,  # VK_VOLUME_DOWN       → Volume Decrement
+    0xAF: 0x00E9,  # VK_VOLUME_UP         → Volume Increment
+
+    # ── Media transport ──────────────────────────────────────────────
+    0xB0: 0x00B5,  # VK_MEDIA_NEXT_TRACK  → Scan Next Track
+    0xB1: 0x00B6,  # VK_MEDIA_PREV_TRACK  → Scan Previous Track
+    0xB2: 0x00B7,  # VK_MEDIA_STOP        → Stop
+    0xB3: 0x00CD,  # VK_MEDIA_PLAY_PAUSE  → Play/Pause
+
+    # ── Browser ──────────────────────────────────────────────────────
+    0xA6: 0x0224,  # VK_BROWSER_BACK      → AC Back
+    0xA7: 0x0225,  # VK_BROWSER_FORWARD   → AC Forward
+    0xA8: 0x0227,  # VK_BROWSER_REFRESH   → AC Refresh
+    0xA9: 0x0226,  # VK_BROWSER_STOP      → AC Stop
+    0xAA: 0x0221,  # VK_BROWSER_SEARCH    → AC Search
+    0xAB: 0x022A,  # VK_BROWSER_FAVORITES → AC Bookmarks
+    0xAC: 0x0223,  # VK_BROWSER_HOME      → AC Home
+
+    # ── Launch applications ──────────────────────────────────────────
+    0xB4: 0x018A,  # VK_LAUNCH_MAIL       → AL Email Reader
+    0xB5: 0x0183,  # VK_LAUNCH_MEDIA_SELECT → AL Consumer Control Config
+    0xB6: 0x0194,  # VK_LAUNCH_APP1       → AL Local Machine Browser
+    0xB7: 0x0192,  # VK_LAUNCH_APP2       → AL Calculator
 }
 
 # ═══════════════════════════════════════════════════════════════════
 #  Mapping count verification
 # ═══════════════════════════════════════════════════════════════════
 
-_total_mappings = len(VK_MODIFIER_MAP) + len(VK_TO_HID)
+_total_mappings = len(VK_MODIFIER_MAP) + len(VK_TO_HID) + len(VK_TO_CONSUMER)
 assert _total_mappings >= 150, (
     f"Expected >=150 mappings, got {_total_mappings}"
 )

@@ -70,6 +70,10 @@ void network_task(void *pvParameters)
                 memcpy(event.keyboard.keycodes, pkt.keyboard.keycodes, 6);
                 break;
 
+            case EVENT_TYPE_CONSUMER:
+                event.consumer.usage_id = pkt.consumer.usage_id;
+                break;
+
             default:
                 continue;
         }
