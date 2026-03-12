@@ -13,3 +13,37 @@ menu "WiFi Configuration"
             WiFi password (WPA2).
 
 endmenu
+
+menu "USB HID Descriptor"
+
+    config USB_DESC_MANUFACTURER
+        string "Manufacturer"
+        default "ESP32"
+        help
+            USB device manufacturer string.
+
+    config USB_DESC_PRODUCT
+        string "Product"
+        default "Wireless KVM"
+        help
+            USB device product string.
+
+    config USB_DESC_SERIAL
+        string "Serial Number"
+        default "000000000001"
+        help
+            USB device serial number string.
+
+    config USB_DESC_VID
+        hex "Vendor ID"
+        default 0x303A
+        help
+            USB Vendor ID (0x303A = Espressif).
+
+    config USB_DESC_PID
+        hex "Product ID"
+        default 0x4001
+        help
+            USB Product ID.
+
+endmenu

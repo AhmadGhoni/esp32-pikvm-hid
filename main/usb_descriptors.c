@@ -128,7 +128,7 @@ static const uint8_t s_hid_report_descriptor[] = {
 //  DEVICE DESCRIPTOR
 // ═══════════════════════════════════════════════════════════════════
 
-const tusb_desc_device_t s_device_descriptor = {
+tusb_desc_device_t s_device_descriptor = {
     .bLength            = sizeof(tusb_desc_device_t),
     .bDescriptorType    = TUSB_DESC_DEVICE,
     .bcdUSB             = 0x0200,
@@ -136,12 +136,12 @@ const tusb_desc_device_t s_device_descriptor = {
     .bDeviceSubClass    = 0x00,
     .bDeviceProtocol    = 0x00,
     .bMaxPacketSize0    = CFG_TUD_ENDPOINT0_SIZE,
-    .idVendor           = 0x303A,           // Espressif VID (dev only!)
-    .idProduct          = 0x4001,
+    .idVendor           = CONFIG_USB_DESC_VID,
+    .idProduct          = CONFIG_USB_DESC_PID,
     .bcdDevice          = 0x0100,
-    .iManufacturer      = 1,
-    .iProduct           = 2,
-    .iSerialNumber      = 3,
+    .iManufacturer      = 0,
+    .iProduct           = 0,
+    .iSerialNumber      = 0,
     .bNumConfigurations = 1,
 };
 
@@ -168,12 +168,29 @@ const uint8_t s_configuration_descriptor[] = {
 //  STRING DESCRIPTORS
 // ═══════════════════════════════════════════════════════════════════
 
-const char *s_string_descriptors[] = {
-    [0] = "\x09\x04",          // Supported language: English (US)
-    [1] = "ESP32-S3 HID",      // Manufacturer
-    [2] = "Wireless KBD+Mouse+Media",// Product
-    [3] = "000000000001",      // Serial
-};
+const char *s_string_descriptors[4];
+uint8_t usb_string_descriptor_count;
+
+void usb_descriptors_init(void)
+{
+    uint8_t idx = 1;
+    s_string_descriptors[0] = "\x09\x04"; // Language: English (US)
+
+    if (CONFIG_USB_DESC_MANUFACTURER[0] != '\0') {
+        s_string_descriptors[idx] = CONFIG_USB_DESC_MANUFACTURER;
+        s_device_descriptor.iManufacturer = idx++;
+    }
+    if (CONFIG_USB_DESC_PRODUCT[0] != '\0') {
+        s_string_descriptors[idx] = CONFIG_USB_DESC_PRODUCT;
+        s_device_descriptor.iProduct = idx++;
+    }
+    if (CONFIG_USB_DESC_SERIAL[0] != '\0') {
+        s_string_descriptors[idx] = CONFIG_USB_DESC_SERIAL;
+        s_device_descriptor.iSerialNumber = idx++;
+    }
+
+    usb_string_descriptor_count = idx;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  TINYUSB CALLBACKS

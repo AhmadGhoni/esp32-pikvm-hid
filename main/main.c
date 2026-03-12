@@ -45,13 +45,14 @@ void app_main(void)
     ESP_LOGI(TAG, "WiFi power save disabled");
 
     // 4. Initialize TinyUSB
+    usb_descriptors_init();
     const tinyusb_config_t tusb_cfg = {
         .port = TINYUSB_PORT_FULL_SPEED_0,
         .task = TINYUSB_TASK_DEFAULT(),
         .descriptor = {
             .device            = &s_device_descriptor,
             .string            = s_string_descriptors,
-            .string_count      = USB_STRING_DESCRIPTOR_COUNT,
+            .string_count      = usb_string_descriptor_count,
             .full_speed_config = s_configuration_descriptor,
         },
     };

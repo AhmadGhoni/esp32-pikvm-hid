@@ -37,9 +37,15 @@ _Static_assert(sizeof(consumer_report_t) == 2, "Consumer report must be 2 bytes"
 
 // USB descriptors (defined in usb_descriptors.c)
 #include "tusb.h"
-extern const tusb_desc_device_t s_device_descriptor;
+extern tusb_desc_device_t s_device_descriptor;
 extern const uint8_t s_configuration_descriptor[];
 extern const char *s_string_descriptors[];
-#define USB_STRING_DESCRIPTOR_COUNT 4
+extern uint8_t usb_string_descriptor_count;
+
+/**
+ * Build string descriptor table and device descriptor indices
+ * based on Kconfig. Must be called before tinyusb_driver_install().
+ */
+void usb_descriptors_init(void);
 
 #endif
