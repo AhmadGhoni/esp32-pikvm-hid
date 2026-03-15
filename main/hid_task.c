@@ -2,29 +2,27 @@
 #include "protocol.h"
 #include "usb_descriptors.h"
 
-#include <string.h>
-#include "tinyusb.h"
 #include "class/hid/hid_device.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
-#include "esp_log.h"
+#include "tinyusb.h"
+#include <string.h>
+
 
 #define TAG "HID"
 
 extern QueueHandle_t hid_event_queue;
 
-void hid_task(void *pvParameters)
-{
+void hid_task(void *pvParameters) {
     (void)pvParameters;
 
     hid_event_t event;
 
     while (1) {
-        if (xQueueReceive(hid_event_queue, &event, pdMS_TO_TICKS(1)) == pdTRUE) {
-
-            if (!tud_hid_ready()) {
-                ESP_LOGD(TAG, "HID not ready, skipping");
-                continue;
+        if (xQueueReceive(hid_event_queue, &event, portMAX_DELAY) == pdTRUE) {
+            while (!tud_hid_ready()) {
+                vTaskDelay(pdMS_TO_TICKS(1));
             }
 
             switch (event.type) {

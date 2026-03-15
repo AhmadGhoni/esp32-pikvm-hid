@@ -1,25 +1,24 @@
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "nvs_flash.h"
+#include "esp_log.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
-#include "esp_log.h"
+#include <stdio.h>
 
+#include "hid_task.h"
+#include "network_task.h"
 #include "protocol.h"
 #include "usb_descriptors.h"
 #include "wifi_manager.h"
-#include "network_task.h"
-#include "hid_task.h"
 
 #define TAG "MAIN"
 
 QueueHandle_t hid_event_queue;
 
-void app_main(void)
-{
+void app_main(void) {
     ESP_LOGI(TAG, "ESP32-S3 KVM starting...");
 
     // 1. Initialize NVS (required by WiFi)

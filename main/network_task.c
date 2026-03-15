@@ -114,7 +114,7 @@ void network_task(void *pvParameters)
                 continue;
         }
 
-        if (xQueueSend(hid_event_queue, &event, 0) != pdTRUE) {
+        if (xQueueSend(hid_event_queue, &event, pdMS_TO_TICKS(10)) != pdTRUE) {
             ESP_LOGW(TAG, "Queue full - dropping event");
         }
     }

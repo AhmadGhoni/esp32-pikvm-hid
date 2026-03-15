@@ -268,6 +268,7 @@ class InputState:
         self.paste_chars: list[tuple[int, int]] = []  # (hid_keycode, modifiers)
         self.paste_index: int = 0
         self.paste_phase: int = 0  # 0=press, 1=release
+        self.paste_tick_counter: int = 0  # To pace typing
 
     def next_seq(self) -> int:
         self.sequence = (self.sequence + 1) & 0xFFFFFFFF
@@ -425,6 +426,7 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
                             state.paste_chars = chars
                             state.paste_index = 0
                             state.paste_phase = 0
+                            state.paste_tick_counter = 0
                             state.pasting = True
                             print(f"[PASTE] {len(chars)} keystroke(s) queued")
                         else:
@@ -441,6 +443,7 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
                         state.pasting = False
                         state.paste_chars = []
                         state.paste_index = 0
+                        state.paste_tick_counter = 0
                         state.kbd_dirty = True  # Release any paste key
                         print(f"[PASTE] Cancelled ({done}/{total})")
                     return 1  # Block all keys during paste
@@ -577,30 +580,39 @@ def sender_thread(host: str, port: int, rate: int,
                     pkt = pack_keyboard(seq, modifiers, keycodes)
                     sock.sendto(pkt, target)
                 elif state.pasting:
-                    # Paste mode: type one phase per sender cycle
-                    idx = state.paste_index
-                    if idx < len(state.paste_chars):
-                        hid_code, mods = state.paste_chars[idx]
-                        if state.paste_phase == 0:
-                            # Key press
-                            seq = state.next_seq()
-                            kc = bytes([hid_code, 0, 0, 0, 0, 0])
-                            pkt = pack_keyboard(seq, mods, kc)
-                            sock.sendto(pkt, target)
-                            state.paste_phase = 1
-                        else:
-                            # Key release
-                            seq = state.next_seq()
-                            pkt = pack_keyboard(seq, 0, bytes(6))
-                            sock.sendto(pkt, target)
-                            state.paste_phase = 0
-                            state.paste_index += 1
+                    # Paste mode: type one phase per sender cycle, with pacing
+                    # skip 1 tick (8ms @ 125Hz) between phases to allow USB polling and ESP32 queue processing
+                    PASTE_TICK_SKIP = 1
+
+                    if state.paste_tick_counter > 0:
+                        state.paste_tick_counter -= 1
                     else:
-                        count = len(state.paste_chars)
-                        state.pasting = False
-                        state.paste_chars = []
-                        state.paste_index = 0
-                        print(f"[PASTE] Done ({count} chars)")
+                        idx = state.paste_index
+                        if idx < len(state.paste_chars):
+                            hid_code, mods = state.paste_chars[idx]
+                            if state.paste_phase == 0:
+                                # Key press
+                                seq = state.next_seq()
+                                kc = bytes([hid_code, 0, 0, 0, 0, 0])
+                                pkt = pack_keyboard(seq, mods, kc)
+                                sock.sendto(pkt, target)
+                                state.paste_phase = 1
+                                state.paste_tick_counter = PASTE_TICK_SKIP
+                            else:
+                                # Key release
+                                seq = state.next_seq()
+                                pkt = pack_keyboard(seq, 0, bytes(6))
+                                sock.sendto(pkt, target)
+                                state.paste_phase = 0
+                                state.paste_index += 1
+                                state.paste_tick_counter = PASTE_TICK_SKIP
+                        else:
+                            count = len(state.paste_chars)
+                            state.pasting = False
+                            state.paste_chars = []
+                            state.paste_index = 0
+                            state.paste_tick_counter = 0
+                            print(f"[PASTE] Done ({count} chars)")
 
                 if con_dirty:
                     seq = state.next_seq()
