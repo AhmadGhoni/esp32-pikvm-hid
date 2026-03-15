@@ -14,6 +14,12 @@
 
 extern QueueHandle_t hid_event_queue;
 
+static void wait_for_hid_ready(void) {
+    while (!tud_hid_ready()) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
+
 void hid_task(void *pvParameters) {
     (void)pvParameters;
 
@@ -21,9 +27,7 @@ void hid_task(void *pvParameters) {
 
     while (1) {
         if (xQueueReceive(hid_event_queue, &event, portMAX_DELAY) == pdTRUE) {
-            while (!tud_hid_ready()) {
-                vTaskDelay(pdMS_TO_TICKS(1));
-            }
+            wait_for_hid_ready();
 
             switch (event.type) {
                 case EVENT_TYPE_MOUSE: {

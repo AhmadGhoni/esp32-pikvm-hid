@@ -14,6 +14,39 @@
 
 extern QueueHandle_t hid_event_queue;
 
+static void process_udp_packet(const udp_packet_t *pkt)
+{
+    hid_event_t event;
+    event.type = (event_type_t)pkt->type;
+
+    switch (event.type) {
+        case EVENT_TYPE_MOUSE:
+            event.mouse.buttons = pkt->mouse.buttons;
+            event.mouse.dx      = pkt->mouse.dx;
+            event.mouse.dy      = pkt->mouse.dy;
+            event.mouse.wheel   = pkt->mouse.wheel;
+            event.mouse.pan     = pkt->mouse.pan;
+            break;
+
+        case EVENT_TYPE_KEYBOARD:
+            event.keyboard.modifiers = pkt->keyboard.modifiers;
+            memcpy(event.keyboard.keycodes, pkt->keyboard.keycodes, 6);
+            break;
+
+        case EVENT_TYPE_CONSUMER:
+            event.consumer.usage_id = pkt->consumer.usage_id;
+            break;
+
+        default:
+            return;
+    }
+
+    if (xQueueSend(hid_event_queue, &event, pdMS_TO_TICKS(10)) != pdTRUE) {
+        ESP_LOGW(TAG, "Queue full - dropping event");
+    }
+}
+
+
 static int create_udp_socket(void)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -82,40 +115,13 @@ void network_task(void *pvParameters)
         if (len != PACKET_SIZE)            continue;
         if (pkt.magic != PACKET_MAGIC)     continue;
 
-        // Sequence filter (rejects old/duplicate packets)
-        if (pkt.sequence <= last_seq
-            && (last_seq - pkt.sequence) < 1000) {
-            continue;
+        // Sequence filter (robust against 32-bit wrapping)
+        int32_t diff = (int32_t)(pkt.sequence - last_seq);
+        if (diff <= 0 && diff > -1000) {
+            continue; // Old or duplicate packet
         }
         last_seq = pkt.sequence;
 
-        hid_event_t event;
-        event.type = (event_type_t)pkt.type;
-
-        switch (event.type) {
-            case EVENT_TYPE_MOUSE:
-                event.mouse.buttons = pkt.mouse.buttons;
-                event.mouse.dx      = pkt.mouse.dx;
-                event.mouse.dy      = pkt.mouse.dy;
-                event.mouse.wheel   = pkt.mouse.wheel;
-                event.mouse.pan     = pkt.mouse.pan;
-                break;
-
-            case EVENT_TYPE_KEYBOARD:
-                event.keyboard.modifiers = pkt.keyboard.modifiers;
-                memcpy(event.keyboard.keycodes, pkt.keyboard.keycodes, 6);
-                break;
-
-            case EVENT_TYPE_CONSUMER:
-                event.consumer.usage_id = pkt.consumer.usage_id;
-                break;
-
-            default:
-                continue;
-        }
-
-        if (xQueueSend(hid_event_queue, &event, pdMS_TO_TICKS(10)) != pdTRUE) {
-            ESP_LOGW(TAG, "Queue full - dropping event");
-        }
+        process_udp_packet(&pkt);
     }
 }

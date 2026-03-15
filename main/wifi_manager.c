@@ -134,6 +134,31 @@ static void restore_dhcp(void)
     esp_netif_dhcpc_start(s_sta_netif);
 }
 
+// ── Fallback Full Scan ───────────────────────────────────────────
+
+static esp_err_t wifi_fallback_connect(wifi_config_t *wifi_config)
+{
+    ESP_LOGW(TAG, "Fast reconnect failed, falling back to full scan");
+    nvs_clear_cache();
+    restore_dhcp();
+
+    esp_wifi_disconnect();
+    wifi_config->sta.bssid_set = false;
+    wifi_config->sta.channel = 0;
+    memset(wifi_config->sta.bssid, 0, 6);
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, wifi_config));
+    esp_wifi_connect();
+
+    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
+        WIFI_INIT_DONE_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(30000));
+
+    if (bits & WIFI_INIT_DONE_BIT) {
+        ESP_LOGI(TAG, "WiFi connected (fallback)");
+        return ESP_OK;
+    }
+    return ESP_FAIL;
+}
+
 // ── Public API ───────────────────────────────────────────────────
 
 esp_err_t wifi_manager_init(const char *ssid, const char *password)
@@ -153,8 +178,8 @@ esp_err_t wifi_manager_init(const char *ssid, const char *password)
         IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, NULL));
 
     wifi_config_t wifi_config = { 0 };
-    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
-    strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+    strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+    strlcpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_WPA3_PSK;
     wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
 
@@ -195,23 +220,8 @@ esp_err_t wifi_manager_init(const char *ssid, const char *password)
 
     // Fast connect failed — fallback to normal scan
     if (s_fast_connect) {
-        ESP_LOGW(TAG, "Fast reconnect failed, falling back to full scan");
         s_fast_connect = false;
-        nvs_clear_cache();
-        restore_dhcp();
-
-        esp_wifi_disconnect();
-        wifi_config.sta.bssid_set = false;
-        wifi_config.sta.channel = 0;
-        memset(wifi_config.sta.bssid, 0, 6);
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-        esp_wifi_connect();
-
-        bits = xEventGroupWaitBits(wifi_event_group,
-            WIFI_INIT_DONE_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(30000));
-
-        if (bits & WIFI_INIT_DONE_BIT) {
-            ESP_LOGI(TAG, "WiFi connected (fallback)");
+        if (wifi_fallback_connect(&wifi_config) == ESP_OK) {
             return ESP_OK;
         }
     }
