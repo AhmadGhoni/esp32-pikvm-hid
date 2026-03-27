@@ -54,7 +54,6 @@ def main():
         stop_event.set()
         sys.exit(1)
 
-    print("[HOOKS] Keyboard LL + Mouse LL hooks installed")
     print("[KVM] Press Scroll Lock to toggle KVM mode")
     print("[KVM] OFF (input goes to Host PC)")
 

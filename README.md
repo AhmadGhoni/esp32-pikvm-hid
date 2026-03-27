@@ -12,6 +12,7 @@ The Target PC sees a regular USB keyboard and mouse, no drivers or software requ
 - KVM mode toggle via **Scroll Lock** – input goes either to Host or Target
 - **Clipboard paste** – Shift+Insert types clipboard text as keystrokes on Target (supports ASCII + Polish diacritics, Escape to cancel)
 - Fixed polling rate of 125 Hz (configurable 60–1000 Hz) with mouse movement accumulation
+- **Invisible Mouse Jiggler** (`--jiggle`) – prevents the Target PC from sleeping by sending 0-pixel mouse movements
 - Binary UDP protocol – 16-byte packets, low latency
 - WiFi Modem Sleep disabled – eliminates ~200 ms lag on first packet
 
@@ -114,6 +115,7 @@ While KVM is active, press **Shift+Insert** to type the Host clipboard contents 
 | `--host` | *(required)* | ESP32-S3 IP address |
 | `--port` | 4210 | UDP port |
 | `--rate` | 125 | Polling rate in Hz (60–1000) |
+| `--jiggle` | *(optional)* | Enable invisible mouse jiggler |
 
 ## Architecture
 
