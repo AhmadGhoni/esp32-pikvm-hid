@@ -1,127 +1,263 @@
 #include "network_task.h"
 #include "protocol.h"
+#include "hid_task.h"
 #include "wifi_manager.h"
+#include "keymap.h"
 
+#include <errno.h>
 #include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/event_groups.h"
-#include "lwip/sockets.h"
+
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+#include "freertos/queue.h"
+#include "lwip/sockets.h"
 
 #define TAG "NET"
-#define RECV_TIMEOUT_SEC 2
+
+#define RESPONSE_SIZE 4
 
 extern QueueHandle_t hid_event_queue;
 
-static void process_udp_packet(const udp_packet_t *pkt)
+static uint8_t response_ok[RESPONSE_SIZE];
+
+static void build_response_ok(void)
 {
-    hid_event_t event;
-    event.type = (event_type_t)pkt->type;
+    response_ok[0] = 0x33;
+    response_ok[1] = 0x20;
 
-    switch (event.type) {
-        case EVENT_TYPE_MOUSE:
-            event.mouse.buttons = pkt->mouse.buttons;
-            event.mouse.dx      = pkt->mouse.dx;
-            event.mouse.dy      = pkt->mouse.dy;
-            event.mouse.wheel   = pkt->mouse.wheel;
-            event.mouse.pan     = pkt->mouse.pan;
-            break;
+    uint16_t crc = mcu_crc16(response_ok, 2);
 
-        case EVENT_TYPE_KEYBOARD:
-            event.keyboard.modifiers = pkt->keyboard.modifiers;
-            memcpy(event.keyboard.keycodes, pkt->keyboard.keycodes, 6);
-            break;
-
-        case EVENT_TYPE_CONSUMER:
-            event.consumer.usage_id = pkt->consumer.usage_id;
-            break;
-
-        default:
-            return;
-    }
-
-    if (xQueueSend(hid_event_queue, &event, pdMS_TO_TICKS(10)) != pdTRUE) {
-        ESP_LOGW(TAG, "Queue full - dropping event");
-    }
+    response_ok[2] = (crc >> 8) & 0xff;
+    response_ok[3] = crc & 0xff;
 }
 
+static bool packet_valid(const mcu_packet_t *pkt)
+{
+    if (pkt->magic != MCU_MAGIC)
+        return false;
 
-static int create_udp_socket(void)
+    uint16_t crc =
+        ((uint16_t)((uint8_t *)&pkt->crc)[0] << 8) |
+         ((uint8_t *)&pkt->crc)[1];
+
+    return crc == mcu_crc16((const uint8_t *)pkt, 6);
+}
+
+static int create_socket(void)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
     if (sock < 0) {
-        ESP_LOGE(TAG, "Failed to create socket: errno %d", errno);
+        ESP_LOGE(TAG, "socket() failed");
         return -1;
     }
 
-    struct timeval tv = { .tv_sec = RECV_TIMEOUT_SEC, .tv_usec = 0 };
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
     struct sockaddr_in addr = {
-        .sin_family      = AF_INET,
-        .sin_port        = htons(UDP_PORT),
+        .sin_family = AF_INET,
+        .sin_port = htons(UDP_PORT),
         .sin_addr.s_addr = htonl(INADDR_ANY),
     };
 
     if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        ESP_LOGE(TAG, "Failed to bind socket: errno %d", errno);
+        ESP_LOGE(TAG, "bind() failed");
         close(sock);
         return -1;
     }
 
+    ESP_LOGI(TAG, "Listening UDP %d", UDP_PORT);
+
     return sock;
+}
+
+static void send_ack(
+    int sock,
+    struct sockaddr_in *from,
+    socklen_t fromlen)
+{
+    sendto(
+        sock,
+        response_ok,
+        sizeof(response_ok),
+        0,
+        (struct sockaddr *)from,
+        fromlen
+    );
+}
+
+static void queue_event(hid_event_t *event)
+{
+    xQueueSend(
+        hid_event_queue,
+        event,
+        portMAX_DELAY
+    );
+}
+
+static void process_packet(const mcu_packet_t *pkt)
+{
+    hid_event_t event;
+
+    memset(&event, 0, sizeof(event));
+
+    switch (pkt->command) {
+
+    case MCU_CMD_PING:
+
+        return;
+
+    case MCU_CMD_REPEAT:
+
+        return;
+
+    case MCU_CMD_SET_KEYBOARD:
+
+        return;
+
+    case MCU_CMD_SET_MOUSE:
+
+        return;
+
+    case MCU_CMD_CONNECTED:
+
+        return;
+
+    case MCU_CMD_CLEAR:
+
+        event.type = HID_EVENT_CLEAR;
+        queue_event(&event);
+        return;
+    
+        case MCU_CMD_KEYBOARD:
+
+        event.type = HID_EVENT_KEYBOARD;
+
+        event.keyboard.mcu_code = pkt->data[0];
+        event.keyboard.pressed = pkt->data[1];
+
+        queue_event(&event);
+
+        return;
+
+    case MCU_CMD_MOUSE_REL:
+
+        event.type = HID_EVENT_MOUSE_REL;
+
+        event.mouse_rel.dx = (int8_t)pkt->data[0];
+        event.mouse_rel.dy = (int8_t)pkt->data[1];
+
+        queue_event(&event);
+
+        return;
+
+    case MCU_CMD_MOUSE_ABS:
+
+        event.type = HID_EVENT_MOUSE_ABS;
+
+        event.mouse_abs.x =
+            (int16_t)(((uint16_t)pkt->data[0] << 8) |
+                       pkt->data[1]);
+
+        event.mouse_abs.y =
+            (int16_t)(((uint16_t)pkt->data[2] << 8) |
+                       pkt->data[3]);
+
+        queue_event(&event);
+
+        return;
+
+    case MCU_CMD_MOUSE_BUTTON:
+
+        event.type = HID_EVENT_MOUSE_BUTTON;
+
+        // Raw PiKVM packet
+        event.mouse_button.main = pkt->data[0];
+        event.mouse_button.extra = pkt->data[1];
+
+        queue_event(&event);
+
+        return;
+
+    case MCU_CMD_MOUSE_WHEEL:
+
+        event.type = HID_EVENT_MOUSE_WHEEL;
+
+        event.mouse_wheel.wheel = (int8_t)pkt->data[1];
+
+        queue_event(&event);
+
+        return;
+
+    default:
+
+        return;
+    }
 }
 
 void network_task(void *pvParameters)
 {
     (void)pvParameters;
 
-    int sock = -1;
-    uint32_t last_seq = 0;
-    udp_packet_t pkt;
+    build_response_ok();
 
     while (1) {
-        // Wait for WiFi to be connected before opening socket
+
+        xEventGroupWaitBits(
+            wifi_event_group,
+            WIFI_CONNECTED_BIT,
+            pdFALSE,
+            pdFALSE,
+            portMAX_DELAY
+        );
+
+        int sock = create_socket();
+
         if (sock < 0) {
-            ESP_LOGI(TAG, "Waiting for WiFi connection...");
-            xEventGroupWaitBits(wifi_event_group,
-                WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
 
-            sock = create_udp_socket();
-            if (sock < 0) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
+        while (1) {
+
+            if (!(xEventGroupGetBits(wifi_event_group) &
+                  WIFI_CONNECTED_BIT))
+                break;
+
+            struct sockaddr_in from;
+            socklen_t fromlen = sizeof(from);
+
+            mcu_packet_t pkt;
+
+            int len = recvfrom(
+                sock,
+                &pkt,
+                sizeof(pkt),
+                0,
+                (struct sockaddr *)&from,
+                &fromlen
+            );
+
+            if (len != sizeof(pkt))
                 continue;
-            }
-            ESP_LOGI(TAG, "Listening on UDP port %d", UDP_PORT);
+            
+                        if (!packet_valid(&pkt))
+                continue;
+
+            send_ack(
+                sock,
+                &from,
+                fromlen
+            );
+
+            process_packet(&pkt);
+
         }
 
-        // Check if WiFi disconnected — close socket and re-create on reconnect
-        EventBits_t bits = xEventGroupGetBits(wifi_event_group);
-        if (!(bits & WIFI_CONNECTED_BIT)) {
-            ESP_LOGW(TAG, "WiFi lost, closing socket");
-            close(sock);
-            sock = -1;
-            continue;
-        }
+        ESP_LOGW(TAG, "WiFi disconnected");
 
-        int len = recvfrom(sock, &pkt, sizeof(pkt), 0, NULL, NULL);
+        close(sock);
 
-        if (len < 0) {
-            // Timeout or error — loop back to check WiFi state
-            continue;
-        }
+        vTaskDelay(pdMS_TO_TICKS(500));
 
-        if (len != PACKET_SIZE)            continue;
-        if (pkt.magic != PACKET_MAGIC)     continue;
-
-        // Sequence filter (robust against 32-bit wrapping)
-        int32_t diff = (int32_t)(pkt.sequence - last_seq);
-        if (diff <= 0 && diff > -1000) {
-            continue; // Old or duplicate packet
-        }
-        last_seq = pkt.sequence;
-
-        process_udp_packet(&pkt);
     }
 }

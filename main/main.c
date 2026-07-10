@@ -58,12 +58,12 @@ void app_main(void) {
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     ESP_LOGI(TAG, "TinyUSB initialized");
 
-    hid_event_queue = xQueueCreate(32, sizeof(hid_event_t));
-    if (hid_event_queue == NULL) {
-        ESP_LOGE(TAG, "Failed to create HID event queue");
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        esp_restart();
-    }
+    hid_event_queue = xQueueCreate(
+        64,
+        sizeof(hid_event_t)
+    );
+
+    configASSERT(hid_event_queue);
 
     // 5. Start tasks on separate cores
     BaseType_t xRet;

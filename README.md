@@ -1,181 +1,138 @@
-# ESP32 KVM over IP
+# ESP32 PiKVM HID Bridge
 
-Wireless KVM switch (keyboard + mouse) based on ESP32-S3. Captures input from a **Host PC** (Windows) and forwards it over WiFi/UDP to an ESP32-S3, which emulates a standard USB HID device (keyboard + mouse) connected to a **Target PC**.
+An ESP32 firmware that allows PiKVM to control a target computer through USB HID over Wi-Fi.
 
-The Target PC sees a regular USB keyboard and mouse, no drivers or software required.
+The firmware implements the PiKVM UDP HID protocol and exposes a native TinyUSB composite HID device (Keyboard + Mouse + Consumer Control) to the target machine.
+
+Unlike serial-based HID bridges, this project communicates directly with PiKVM over UDP, providing low latency keyboard and mouse control using an ESP32-S3 with native USB OTG.
+
+---
 
 ## Features
 
-- Full keyboard support: all keys, modifiers (L/R Ctrl, Shift, Alt, GUI), 6-key rollover, function keys, numpad
-- 5-button mouse with 16-bit relative movement, vertical and horizontal scroll
-- Raw mouse data (Raw Input) – no Windows acceleration, 1:1 sensor mapping
-- KVM mode toggle via **Scroll Lock** – input goes either to Host or Target
-- **Clipboard paste** – Shift+Insert types clipboard text as keystrokes on Target (supports ASCII + Polish diacritics, Escape to cancel)
-- Fixed polling rate of 125 Hz (configurable 60–1000 Hz) with mouse movement accumulation
-- **Invisible Mouse Jiggler** (`--jiggle`) – prevents the Target PC from sleeping by sending 0-pixel mouse movements
-- Binary UDP protocol – 16-byte packets, low latency
-- WiFi Modem Sleep disabled – eliminates ~200 ms lag on first packet
+- USB HID Keyboard
+- USB HID Relative Mouse
+- Mouse Wheel
+- 5 Mouse Buttons
+- Modifier Key Support
+- Multi-key Combination (Ctrl+C, Ctrl+V, Ctrl+A, Win, Alt, Shift, etc.)
+- TinyUSB Composite HID
+- Wi-Fi UDP Communication
+- Compatible with PiKVM UDP HID Plugin
+- ESP-IDF 5.x
 
-## System Diagram
-
-```
-┌─────────────────────┐         Wi-Fi / UDP           ┌──────────────────────┐
-│     HOST PC         │  ────────────────────────►    │       ESP32-S3       │
-│                     │    port 4210                  │                      │
-│  server.py          │    16B packets @ 125 Hz       │  network_task        │
-│  ├─ WH_KEYBOARD_LL  │                               │  (UDP recv + parse)  │
-│  ├─ WH_MOUSE_LL     │                               │         │            │
-│  ├─ Raw Input       │                               │    xQueue (32)       │
-│  └─ Sender Thread   │                               │         │            │
-│     (accumulate+UDP)│                               │  hid_task            │
-│                     │                               │  (tud_hid_report)    │
-└─────────────────────┘                               │         │ USB        │
-                                                      └─────────┼────────────┘
-                                                                │
-                                                      ┌─────────▼────────────┐
-                                                      │     TARGET PC        │
-                                                      │  sees: keyboard      │
-                                                      │  + mouse USB HID     │
-                                                      └──────────────────────┘
-```
-
-## Hardware Requirements
-
-- **ESP32-S3** – any board with native USB OTG (e.g. ESP32-S3-DevKitC-1)
-- USB cable to connect ESP32-S3 to the **Target PC** (via USB OTG port, not UART)
-- Host PC and ESP32-S3 on the same WiFi network
-
-## Software Requirements
-
-| Component | Requirements |
-|---|---|
-| **ESP32 Firmware** | ESP-IDF v5.x, components: `esp_tinyusb`, `tinyusb` (fetched automatically) |
-| **Server (Host PC)** | Python 3.10+, Windows (WinAPI hooks + Raw Input via ctypes, no external dependencies) |
-
-## Installation
-
-### ESP32-S3 Firmware
-
-1. Install [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/) (v5.x)
-
-2. Clone the repository:
-   ```
-   git clone <repo-url>
-   cd esp32-kvm-ip
-   ```
-
-3. Configure WiFi SSID and password:
-   ```
-   idf.py menuconfig
-   ```
-   Navigate to **WiFi Configuration** and set:
-   - `WiFi SSID` – network name
-   - `WiFi Password` – WPA2 password
-
-4. Build and flash:
-   ```
-   idf.py build flash monitor
-   ```
-   The ESP32 will connect to WiFi and start listening on UDP port 4210.
-
-### Server (Host PC)
-
-The server has no external dependencies, it uses only the Python standard library.
-
-```
-cd server
-python server.py --host <ESP32_IP>
-```
-
-## Usage
-
-1. Connect the ESP32-S3 via USB to the **Target PC** (USB OTG port)
-2. Run the server on the **Host PC**:
-   ```
-   python server.py --host 192.168.1.21
-   ```
-3. Press **Scroll Lock** to toggle KVM mode:
-   - **KVM OFF** (default) – keyboard and mouse work normally on Host PC
-   - **KVM ON** – input is blocked on Host PC and forwarded to Target PC
-
-### Clipboard Paste
-
-While KVM is active, press **Shift+Insert** to type the Host clipboard contents on the Target PC as individual keystrokes. This is useful for pasting passwords, commands, URLs, or any text into a machine that has no network/shared clipboard.
-
-- Supported characters: ASCII (letters, digits, punctuation, whitespace) and Polish diacritics (ą, ć, ę, ł, ń, ó, ś, ź, ż via AltGr)
-- Polish characters require the **Polish Programmer** keyboard layout on both Host and Target
-- Unsupported characters (e.g. emoji, CJK) are silently skipped
-- Press **Escape** to cancel paste in progress
-- Typing speed: ~62 chars/s at 125 Hz (1 press + 1 release per character).
-
-### Server Options
-
-| Parameter | Default | Description |
-|---|---|---|
-| `--host` | *(required)* | ESP32-S3 IP address |
-| `--port` | 4210 | UDP port |
-| `--rate` | 125 | Polling rate in Hz (60–1000) |
-| `--jiggle` | *(optional)* | Enable invisible mouse jiggler |
+---
 
 ## Architecture
 
-### UDP Protocol
+```
+           PiKVM
+              │
+      WebSocket HID
+              │
+        UDP HID Plugin
+              │
+           Wi-Fi UDP
+              │
+        ESP32-S2 / ESP32-S3
+              │
+         TinyUSB Composite HID
+              │
+          USB OTG Device
+              │
+         Target Computer
+```
 
-Fixed packet size: **16 bytes**, little-endian. Event type (mouse/keyboard) specified in the header. Each packet carries the full state (not deltas) of buttons and keys, a lost packet won't cause a "stuck key". A monotonic sequence counter allows ESP32 to discard duplicate and stale packets.
+---
 
-### Server (Windows)
+## Supported HID
 
-- **WH_KEYBOARD_LL** – captures keystrokes, maps VK → HID Usage ID, blocks propagation to Host when KVM is active
-- **WH_MOUSE_LL** – blocks mouse on Host PC when KVM is active
-- **Raw Input (WM_INPUT)** – reads raw mouse deltas without Windows acceleration
-- **Sender Thread** – fixed polling rate, accumulates dx/dy from Raw Input, packs and sends UDP. Prevents flooding the ESP32 (gaming mice generate 1000+ events/s, while the ESP queue holds only 32 slots)
+### Keyboard
 
-### ESP32-S3 Firmware
+- Standard Keys
+- Modifier Keys
+    - Left / Right Ctrl
+    - Left / Right Shift
+    - Left / Right Alt
+    - Left / Right GUI (Windows)
+- Function Keys
+- Navigation Keys
+- Numpad
+- Scroll Lock
+- Caps Lock
+- Num Lock
 
-Two FreeRTOS tasks pinned to separate cores:
-- **network_task (Core 0)** – receives UDP packets, validates (magic + sequence), parses and pushes to xQueue
-- **hid_task (Core 1)** – dequeues events and sends HID reports over USB (TinyUSB)
+### Mouse
 
-Single USB HID device, two collections distinguished by Report ID:
-- **Report ID 1 – Mouse:** 5 buttons, 16-bit X/Y (relative), 8-bit wheel + pan
-- **Report ID 2 – Keyboard:** 8-bit modifiers, 6-key rollover, 5 LEDs (output)
+- Relative Movement
+- Left Button
+- Right Button
+- Middle Button
+- Back Button
+- Forward Button
+- Vertical Wheel
 
-USB polling interval: 1 ms. WiFi Modem Sleep disabled.
+---
 
-### Key Design Decisions
+## Build
 
-| Decision | Rationale |
-|---|---|
-| UDP without ACK | Lowest latency. Full state in every packet compensates for packet loss |
-| 16-bit X/Y mouse | 8-bit (±127) is insufficient when accumulating movement between WiFi packets |
-| Raw Input instead of LL hook for mouse | Bypasses Windows acceleration, 1:1 sensor movement |
-| Fixed polling rate with accumulation | Throughput control, ESP32 is not flooded with thousands of events/s |
-| Report ID instead of 2 interfaces | Simpler: 1 HID interface, 1 endpoint, smaller descriptor |
-| WiFi Modem Sleep = OFF | Default power saving adds ~200 ms lag on first packet |
-| Task pinning to cores | Network + WiFi stack on Core 0, HID on Core 1, no contention |
+Requirements
 
-## Project Structure
+- ESP-IDF 5.x
+- TinyUSB
+- ESP32-S2 or ESP32-S3
+
+```bash
+idf.py set-target esp32s2
+idf.py build
+idf.py flash
+idf.py monitor
+```
+
+---
+
+## PiKVM Configuration
+
+Configure the UDP HID plugin on PiKVM to point to the ESP32 IP address.
+
+Example:
 
 ```
-esp32-kvm-ip/
-├── CMakeLists.txt
-├── sdkconfig.defaults
-├── main/
-│   ├── main.c                 # Initialization: NVS, WiFi, TinyUSB, task creation
-│   ├── Kconfig.projbuild      # WiFi SSID/password config (menuconfig)
-│   ├── tusb_config.h          # TinyUSB configuration
-│   ├── usb_descriptors.c/h    # USB HID descriptors + callbacks
-│   ├── protocol.h             # UDP packet structures + event types
-│   ├── wifi_manager.c/h       # WiFi STA initialization
-│   ├── network_task.c/h       # UDP receive → xQueue
-│   └── hid_task.c/h           # xQueue → USB HID reports
-└── server/
-    ├── server.py              # Server: WinAPI hooks, Raw Input, UDP sender
-    ├── clipboard_typer.py     # Clipboard paste: text → HID keystroke sequences
-    ├── hid_keymap.py          # VK_* → HID Usage ID mapping (150+ keys)
-    └── protocol.py            # UDP packet packing
+host: 192.168.x.x
+port: 4210
 ```
+
+---
+
+## Project Status
+
+Current status:
+
+- Stable Keyboard
+- Stable Relative Mouse
+- Stable Mouse Wheel
+- Stable Modifier Keys
+- Stable Multi-key Combination
+
+Planned features:
+
+- Absolute Mouse
+- Consumer Control Keys
+- OTA Update
+- Configuration Web UI
+
+---
+
+## Acknowledgements
+
+This project was originally inspired by:
+
+https://github.com/KMChris/esp32-kvm-ip
+
+The current firmware has been substantially redesigned and rewritten. The HID implementation, USB descriptors, keyboard processing, mouse processing, networking layer, and overall architecture differ significantly from the original project.
+
+---
 
 ## License
 
-MIT
+MIT License

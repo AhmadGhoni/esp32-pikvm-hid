@@ -5,6 +5,8 @@ idf_component_register(
         "wifi_manager.c"
         "network_task.c"
         "hid_task.c"
+        "crc16.c"
+        "keymap.c"
     INCLUDE_DIRS "."
     PRIV_REQUIRES
         nvs_flash

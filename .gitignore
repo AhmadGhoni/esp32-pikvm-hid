@@ -1,79 +1,100 @@
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
+# =========================
+# ESP-IDF
+# =========================
 
-# Directory metadata
-.directory
-
-# Temporary files
-*~
-*.swp
-*.swo
-*.bak
-*.tmp
-
-# Log files
-*.log
-
-# Build artifacts and directories
-**/build/
 build/
-*.o
-*.a
-*.out
-*.exe # For any host-side utilities compiled on Windows
+**/build/
 
-# ESP-IDF specific build outputs
-*.bin
-*.elf
-*.map
-flasher_args.json # Generated in build directory
-sdkconfig.old
-sdkconfig
-
-# ESP-IDF dependencies
-# For older versions or manual component management
-/components/.idf/
-**/components/.idf/
-# For modern ESP-IDF component manager
 managed_components/
-# If ESP-IDF tools are installed/referenced locally to the project
-.espressif/
+dependencies.lock
 
-# CMake generated files
+sdkconfig
+sdkconfig.old
+
+# ESP-IDF local tools
+.espressif/
+components/.idf/
+**/components/.idf/
+
+# =========================
+# CMake
+# =========================
+
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-install_manifest.txt
 CTestTestfile.cmake
+install_manifest.txt
+compile_commands.json
 
-# Python environment files
-*.pyc
-*.pyo
-*.pyd
+# =========================
+# Binary outputs
+# =========================
+
+*.bin
+*.elf
+*.map
+*.hex
+*.uf2
+
+# Object files
+*.o
+*.obj
+*.a
+*.so
+
+# =========================
+# Python
+# =========================
+
 __pycache__/
+*.py[cod]
 *.egg-info/
 dist/
 
-# Virtual environment folders
 venv/
 .venv/
 env/
 
-# Language Servers
-.clangd/
-.ccls-cache/
-compile_commands.json
+# =========================
+# VSCode / IDE
+# =========================
 
-# Windows specific
+.vscode/
+.idea/
+
+.clangd
+.ccls-cache/
+
+*.user
+*.workspace
+*.suo
+*.sln.docstates
+
+# =========================
+# OS
+# =========================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+.directory
+
 Thumbs.db
-ehthumbs.db
 Desktop.ini
 
-# User-specific configuration files
-*.user
-*.workspace # General workspace files, can be from various tools
-*.suo       # Visual Studio Solution User Options
-*.sln.docstates # Visual Studio
-.vscode/
+# =========================
+# Temporary
+# =========================
+
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# =========================
+# Server
+# =========================
+server/

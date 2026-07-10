@@ -177,8 +177,8 @@ esp_err_t wifi_manager_init(const char *ssid, const char *password)
     wifi_config_t wifi_config = { 0 };
     strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
     strlcpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
-    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_WPA3_PSK;
-    wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    wifi_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED;
 
     // Try fast reconnect using cached BSSID + channel + static IP
     wifi_cache_t cache;

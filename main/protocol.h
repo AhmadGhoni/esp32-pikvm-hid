@@ -2,69 +2,127 @@
 #define PROTOCOL_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
-#define PACKET_MAGIC   0xCAFE
-#define UDP_PORT       4210
-#define PACKET_SIZE    16
+#define UDP_PORT            4210
 
-typedef enum : uint8_t {
-    EVENT_TYPE_MOUSE    = 0x01,
-    EVENT_TYPE_KEYBOARD = 0x02,
-    EVENT_TYPE_CONSUMER = 0x03,
-} event_type_t;
+#define MCU_PACKET_SIZE     8
 
-// ── Incoming UDP packet from server ──────────────────────────────
-typedef struct __attribute__((packed)) {
-    uint16_t magic;         // 0xCAFE
-    uint32_t sequence;      // Sequence counter
-    uint8_t  type;          // event_type_t
-    uint8_t  _reserved;     // Padding
+#define MCU_MAGIC           0x33
 
-    union {
-        struct __attribute__((packed)) {
-            uint8_t  buttons;   // 5 buttons
-            int16_t  dx;        // Delta X
-            int16_t  dy;        // Delta Y
-            int8_t   wheel;     // Scroll V
-            int8_t   pan;       // Scroll H
-            uint8_t  _pad;
-        } mouse;                // 8 bytes
+/* ===========================
+ * PiKVM MCU Commands
+ * =========================== */
 
-        struct __attribute__((packed)) {
-            uint8_t modifiers;  // Modifiers
-            uint8_t reserved;
-            uint8_t keycodes[6];// 6-key rollover
-        } keyboard;             // 8 bytes
+enum {
 
-        struct __attribute__((packed)) {
-            uint16_t usage_id;  // Consumer Usage ID (0 = release)
-            uint8_t  _pad[6];
-        } consumer;             // 8 bytes
-    };
-} udp_packet_t;
+    MCU_CMD_PING          = 0x01,
+    MCU_CMD_REPEAT        = 0x02,
 
-_Static_assert(sizeof(udp_packet_t) == PACKET_SIZE,
-               "Packet must be exactly 16 bytes");
+    MCU_CMD_SET_KEYBOARD  = 0x03,
+    MCU_CMD_SET_MOUSE     = 0x04,
+    MCU_CMD_CONNECTED     = 0x05,
 
-// ── Internal event (passed via xQueue) ─────────────────────────
+    MCU_CMD_CLEAR         = 0x10,
+
+    MCU_CMD_KEYBOARD      = 0x11,
+    MCU_CMD_MOUSE_ABS     = 0x12,
+    MCU_CMD_MOUSE_BUTTON  = 0x13,
+    MCU_CMD_MOUSE_WHEEL   = 0x14,
+    MCU_CMD_MOUSE_REL     = 0x15,
+};
+
+/* ===========================
+ * HID Events
+ * =========================== */
+
+typedef enum {
+
+    HID_EVENT_NONE = 0,
+
+    HID_EVENT_CLEAR,
+
+    HID_EVENT_KEYBOARD,
+
+    HID_EVENT_MOUSE_REL,
+
+    HID_EVENT_MOUSE_ABS,
+
+    HID_EVENT_MOUSE_BUTTON,
+
+    HID_EVENT_MOUSE_WHEEL,
+
+} hid_event_type_t;
+
 typedef struct {
-    event_type_t type;
+
+    hid_event_type_t type;
+
     union {
+
         struct {
-            uint8_t buttons;
-            int16_t dx;
-            int16_t dy;
-            int8_t  wheel;
-            int8_t  pan;
-        } mouse;
-        struct {
-            uint8_t modifiers;
-            uint8_t keycodes[6];
+
+            uint8_t mcu_code;
+
+            bool pressed;
+
         } keyboard;
+
         struct {
-            uint16_t usage_id;
-        } consumer;
+
+            int16_t x;
+
+            int16_t y;
+
+        } mouse_abs;
+
+        struct {
+
+            int8_t dx;
+
+            int8_t dy;
+
+        } mouse_rel;
+
+        struct {
+
+            uint8_t main;
+            uint8_t extra;
+
+        } mouse_button;
+        
+        struct {
+
+            int8_t wheel;
+
+        } mouse_wheel;
+
     };
+
 } hid_event_t;
+
+/* ===========================
+ * MCU Packet
+ * =========================== */
+
+typedef struct {
+
+    uint8_t magic;
+
+    uint8_t command;
+
+    uint8_t data[4];
+
+    uint16_t crc;
+
+} __attribute__((packed)) mcu_packet_t;
+
+_Static_assert(sizeof(mcu_packet_t) == 8, "Invalid MCU packet size");
+
+/* ===========================
+ * CRC16
+ * =========================== */
+
+uint16_t mcu_crc16(const uint8_t *data, uint32_t len);
 
 #endif
